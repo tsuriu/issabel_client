@@ -1,8 +1,6 @@
-# Issabel Python Client
-
-<!-- [![PyPI version](https://img.shields.io/pypi/v/issabel-client.svg)](https://pypi.org/project/issabel-client/) -->
+[![PyPI version](https://img.shields.io/pypi/v/issabel-client.svg)](https://pypi.org/project/issabel-client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<!-- [![Python Versions](https://img.shields.io/pypi/pyversions/issabel-client.svg)](https://pypi.org/project/issabel-client/) -->
+[![Python Versions](https://img.shields.io/pypi/pyversions/issabel-client.svg)](https://pypi.org/project/issabel-client/)
 
 A simple and functional Python Client to consume the Issabel PBX API. This Client provides a highly dynamic interface that automatically supports all available PBX resources.
 
