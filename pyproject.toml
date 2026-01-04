@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [
     { name = "Tulio Amancio", email = "root@tsuriu.com" },
 ]
-keywords = ["issabel", "pbx", "api", "client", "sdk", "asterisk", "telephony"]
+keywords = ["issabel", "pbx", "api", "client", "python-client", "asterisk", "telephony"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -31,9 +31,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tulioamancio/issabel-sdk"
-Repository = "https://github.com/tulioamancio/issabel-sdk"
-Issues = "https://github.com/tulioamancio/issabel-sdk/issues"
+Homepage = "https://github.com/tsuriu/issabel_client"
+Repository = "https://github.com/tsuriu/issabel_client"
+Issues = "https://github.com/tsuriu/issabel_client/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

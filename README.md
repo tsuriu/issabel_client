@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Versions](https://img.shields.io/pypi/pyversions/issabel-client.svg)](https://pypi.org/project/issabel-client/)
 
-A simple and functional Python Client to consume the Issabel PBX API. This SDK provides a highly dynamic interface that automatically supports all available PBX resources.
+A simple and functional Python Client to consume the Issabel PBX API. This Client provides a highly dynamic interface that automatically supports all available PBX resources.
 
 ## Features
 
@@ -23,8 +23,8 @@ pip install issabel-client
 Or install from source for development:
 
 ```bash
-git clone https://github.com/tulioamancio/issabel-sdk.git
-cd issabel-sdk
+git clone https://github.com/tsuriu/issabel_client.git
+cd issabel_client
 pip install -e .
 ```
 
