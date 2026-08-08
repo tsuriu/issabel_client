@@ -1,3 +1,3 @@
-from .client import IssabelClient, __version__
+from .client import IssabelClient, AuthenticationError, __version__
 
-__all__ = ["IssabelClient"]
+__all__ = ["IssabelClient", "AuthenticationError", "__version__"]

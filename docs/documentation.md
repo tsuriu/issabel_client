@@ -1,110 +1,347 @@
-# Issabel Python Client Documentation
+# Issabel Python Client — Documentation (v0.2.0)
 
-The `issabel-client` is a simple and functional Python library to consume the Issabel PBX API. It provides a highly dynamic interface that automatically supports all available PBX resources.
+The `issabel-client` is a Python library for consuming the Issabel PBX REST API (`pbxapi`). It features dynamic method generation, batch provisioning, an AMI wrapper, and robust error handling.
 
-## Features
+---
 
-- **Dynamic Method Generation**: No need to wait for library updates when new endpoints are added to the PBX.
-- **Automatic Authentication**: Handles login and token management.
-- **Token Renewal**: Automatically renews expired tokens using the refresh token.
-- **SSL/TLS Support**: Configurable SSL verification for secure environments.
-- **Reloading**: Automatically applies changes to the PBX configuration.
+## Table of Contents
 
-## Usage
+1. [Installation](#installation)
+2. [Initialization](#initialization)
+3. [Authentication](#authentication)
+4. [Resource Operations (CRUD)](#resource-operations-crud)
+5. [Batch Provisioning](#batch-provisioning)
+6. [AMI Wrapper (`client.manager`)](#ami-wrapper-clientmanager)
+7. [Search](#search)
+8. [File Upload (Music-on-Hold)](#file-upload-music-on-hold)
+9. [Resource Catalogue](#resource-catalogue)
+10. [Error Handling](#error-handling)
 
-### Initialization
+---
+
+## Installation
+
+```bash
+pip install issabel_client
+```
+
+Or from source for development:
+
+```bash
+git clone https://github.com/tsuriu/issabel_client.git
+cd issabel_client
+pip install -e .[dev]
+```
+
+---
+
+## Initialization
 
 ```python
 from issabel_client import IssabelClient
 
-# Replace with your Issabel server details
 client = IssabelClient(
-    base_url="192.168.1.100", 
-    use_ssl=True, 
-    verify_ssl=False  # Set to True if using valid certificates
+    base_url="192.168.1.100",
+    use_ssl=True,           # Use HTTPS (default: True)
+    verify_ssl=False,       # Verify SSL certificate (default: False — common for self-signed PBX certs)
+    timeout=30,             # Request timeout in seconds (default: 30)
 )
+```
 
-# Authenticate
+### Context Manager (recommended)
+
+The client implements `__enter__`/`__exit__`, which automatically closes the underlying `requests.Session`:
+
+```python
+with IssabelClient("192.168.1.100", use_ssl=False) as client:
+    client.authenticate("admin", "password")
+    extensions = client.get_extensions()
+```
+
+---
+
+## Authentication
+
+### Login
+
+```python
 client.authenticate("admin", "your_password")
 ```
 
-### Resource Operations
+- Stores `access_token` and `refresh_token` internally.
+- Raises `ValueError` on invalid credentials (HTTP 403).
+- Raises `ValueError` on network errors.
 
-The client uses `__getattr__` to dynamically support any resource available in the PBX API. The naming convention is:
-- `get_<resource>(id=None, fields=None)`
-- `create_<resource>(data, reload=True)`
-- `update_<resource>(id, data, reload=True)`
-- `delete_<resource>(id, reload=True)`
+### Check Session State
 
-#### Extensions
+```python
+status = client.check_auth_status()
+# Returns current token info or {"status": "unauthorized"}
+```
+
+### Token Renewal
+
+Token renewal is **automatic**: the client detects HTTP 401 responses or legacy `{"status": "expired"}` bodies and calls `renew_token()` transparently. If renewal fails, `AuthenticationError` is raised.
+
+---
+
+## Resource Operations (CRUD)
+
+### Dynamic Methods
+
+The client uses `__getattr__` to generate CRUD methods on the fly for any resource:
+
+| Method | Signature | HTTP |
+|--------|-----------|------|
+| `get_<resource>` | `(resource_id=None, fields=None)` | GET |
+| `create_<resource>` | `(data, reload=True)` | POST |
+| `update_<resource>` | `(resource_id, data, reload=True)` | PUT |
+| `delete_<resource>` | `(resource_id, reload=True)` | DELETE |
+
+### Examples
 
 ```python
 # List all extensions
 extensions = client.get_extensions()
 
 # Get a specific extension
-extension = client.get_extensions(2000)
+ext = client.get_extensions(resource_id=2000)
 
-# Create a new extension
+# Get only specific fields
+ext = client.get_extensions(resource_id=2000, fields=["name", "extension"])
+
+# Create
 client.create_extensions({
-    "name": "John Doe",
     "extension": "2000",
-    "secret": "pswd123"
+    "name": "John Doe",
+    "secret": "pswd123",
+    "tech": "sip",
 })
 
-# Update an extension
-client.update_extensions(2000, {"name": "John Updated"})
+# Update
+client.update_extensions("2000", {"name": "John Updated"})
 
-# Delete an extension
-client.delete_extensions(2000)
+# Delete one
+client.delete_extensions("2000")
+
+# Delete multiple (comma-joined in URL path)
+client.delete_resource("ivr", ["1", "2", "3"])
 ```
 
-#### Ring Groups
+### Reload Control
+
+Every write operation (`POST`, `PUT`, `DELETE`) triggers an Asterisk config reload by default. Pass `reload=False` to suppress it:
 
 ```python
-# List all ring groups
-groups = client.get_ringgroups()
-
-# Create a new ring group
-client.create_ringgroups({
-    "name": "Sales",
-    "extension_list": ["100", "101"]
-})
+client.create_extensions({"extension": "2001", ...}, reload=False)
+client.delete_extensions("2001", reload=False)
 ```
 
-### Search
+> **Important:** When `reload=False`, the field `"reload": "false"` is explicitly included in the request body. The Issabel API applies reload by default when the field is absent, so omitting it is not equivalent to disabling it.
 
-You can search within any resource:
+---
+
+## Batch Provisioning
+
+For bulk operations (importing hundreds of extensions, for example), use `client.batch()` to suppress per-operation reloads and fire a **single reload at the end**:
 
 ```python
+with client.batch():
+    for ext_num in range(1001, 1100):
+        client.create_extensions({
+            "extension": str(ext_num),
+            "name": f"User {ext_num}",
+            "secret": "s3cr3t",
+        })
+# ↑ manager/reload dispatched automatically here — Asterisk updated once.
+```
+
+**How it works:**
+
+1. Entering the `with` block sets an internal flag (`_batch_mode = True`).
+2. All `POST`/`PUT`/`DELETE` calls within the block receive `reload="false"` regardless of what the caller passes.
+3. On exit, `client.manager.reload()` is called exactly **once**, applying all pending changes.
+4. If an exception escapes the block, the reload is still attempted (so partial changes are not left in limbo), and the original exception propagates normally.
+
+---
+
+## AMI Wrapper (`client.manager`)
+
+The `client.manager` namespace exposes all 18 Asterisk Manager Interface commands available at `/pbxapi/manager/{action}`:
+
+### Available Actions
+
+| Method | HTTP | Key Parameters |
+|--------|------|----------------|
+| `originate` | GET | `channel`, `extension`, `context`, `priority`, `timeout`, `callerid`, ... |
+| `queuestatus` | GET | `queue` |
+| `status` | GET | `channel` |
+| `extensionstate` | GET | `extension`, `context`, `uniqueid` |
+| `dbget` | GET | `family`, `key` |
+| `dbput` | POST | `family`, `key`, `value` |
+| `dbdel` | DELETE | `family`, `key` |
+| `dbdeltree` | GET | `family` |
+| `dbshow` | GET | `family` |
+| `queueadd` | GET | `queue`, `interface`, `penalty`, `paused`, `membername`, `stateinterface` |
+| `queueremove` | GET | `queue`, `interface` |
+| `queuepause` | GET | `queue`, `interface` |
+| `queueunpause` | GET | `queue`, `interface` |
+| `queuelog` | GET | `queue`, `event`, `uniqueid`, `interface`, `message` |
+| `reload` | GET | — |
+| `hangup` | GET | `channel`, `cause` |
+| `getvar` | GET | `channel`, `variable` |
+| `userevent` | GET | `event`, + custom params |
+
+### Examples
+
+```python
+# Originate a call
+client.manager.originate(
+    channel="SIP/1001",
+    extension="1002",
+    context="from-internal",
+    priority=1,
+)
+
+# Read from AstDB
+val = client.manager.dbget(family="MyFamily", key="MyKey")
+
+# Write to AstDB
+client.manager.dbput(family="MyFamily", key="MyKey", value="MyValue")
+
+# Queue status
+status = client.manager.queuestatus(queue="support")
+
+# Hang up a call
+client.manager.hangup(channel="SIP/1001-00000001")
+
+# Manual full reload
+client.manager.reload()
+```
+
+---
+
+## Search
+
+```python
+# Search within any resource
 results = client.search("extensions", "John")
+
+# Limit fields returned
+results = client.search("queues", "support", fields=["extension", "descr"])
 ```
 
-### Error Handling
+---
 
-The client includes a `_safe_json_parse` helper to handle cases where the server might return non-JSON responses (e.g., HTML error pages). Errors will include the status code and the first few characters of the response body for easier debugging.
+## File Upload (Music-on-Hold)
+
+Use `upload_moh_file()` to upload an audio file to a MOH category. This sends a `multipart/form-data` POST instead of JSON:
 
 ```python
-try:
-    client.authenticate("admin", "wrong_password")
-except Exception as e:
-    print(f"Error: {e}")
+client.upload_moh_file(
+    category="default",
+    file_path="/path/to/audio.wav",
+    reload=True,
+)
 ```
 
-## Available Resources
-The following resources are currently supported based on the PBX controllers:
-- `announcements`
-- `blacklist`
-- `bosssecretary`
-- `callback`
-- `callflow`
-- `cidlookup`
-- `classofservice`
-- `conferences`
-- `extensions`
-- `inboundroutes`
-- `ivr`
-- `queues`
-- `ringgroups`
-- `trunks`
-- ... and many more.
+The file is read from the local filesystem and streamed to the server.
+
+---
+
+## Resource Catalogue
+
+### Full CRUD (GET, POST, PUT, DELETE, SEARCH)
+
+| Resource | ID Field | Notes |
+|----------|----------|-------|
+| `announcements` | `announcement_id` | |
+| `blacklist` | `id` | |
+| `bosssecretary` | `id_group` | |
+| `callback` | `callback_id` | |
+| `callflow` | `id` | Day/Night toggle |
+| `cidlookup` | `cidlookup_id` | |
+| `classofservice` | `context` | |
+| `conferences` | `exten` | |
+| `customdestinations` | `custom_dest` | |
+| `customextensions` | `custom_exten` | |
+| `dahdichanneldids` | `channel` | |
+| `dialplaninjection` | `id` | |
+| `disa` | `disa_id` | |
+| `dynamicroutes` | `dynroute_id` | |
+| `extensions` | `id` | |
+| `inboundroutes` | `extension` | |
+| `ivr` | `id` | |
+| `languages` | `language_id` | |
+| `mailboxes` | `extension` | |
+| `miscapplications` | `miscapps_id` | |
+| `miscdestinations` | `id` | |
+| `musiconhold` | `id` | File-based; use `upload_moh_file()` for uploads |
+| `outboundroutes` | `route_id` | |
+| `paging` | `page_group` | |
+| `parkinglots` | `id` | |
+| `pinsets` | `pinsets_id` | |
+| `queuepriorities` | `queueprio_id` | |
+| `queues` | `extension` | |
+| `recordingrules` | `id` | |
+| `recordings` | `id` | |
+| `ringgroups` | `grpnum` | |
+| `setcallerid` | `cid_id` | |
+| `timeconditions` | `id` | |
+| `timegroups` | `id` | |
+| `trunks` | `trunkid` | |
+| `vmblast` | `grpnum` | |
+| `writequeuelog` | `qlog_id` | |
+
+### GET + PUT only (no POST / DELETE)
+
+| Resource | Notes |
+|----------|-------|
+| `classofserviceadmin` | Use `update_classofserviceadmin()` |
+| `routecongestionmessages` | Use `update_routecongestionmessages()` |
+
+### Read-only (GET / SEARCH only)
+
+These resources raise `NotImplementedError` on the **client side** if you attempt any write operation:
+
+| Resource | Notes |
+|----------|-------|
+| `alldestinations` | All configured destinations (SQL view) |
+| `allextensions` | All extensions (dynamic) |
+| `featurecodes` | Feature codes |
+| `modules` | Installed modules |
+| `systemrecordings` | Audio files in `/var/lib/asterisk/sounds/custom/` |
+
+### AMI Wrapper (`client.manager.*`)
+
+See [AMI Wrapper](#ami-wrapper-clientmanager) section above.
+
+---
+
+## Error Handling
+
+| Exception | When raised |
+|-----------|-------------|
+| `ValueError` | Invalid credentials (403), non-JSON response from server, network error during `authenticate()` |
+| `AuthenticationError` | Token renewal fails (expired refresh token, network down during `renew_token()`) |
+| `NotImplementedError` | Write operation on a read-only or GET+PUT-only resource |
+| `AttributeError` | Unknown method name not matching any `get_`/`create_`/`update_`/`delete_` prefix |
+
+All other HTTP and network errors in `_request()` are returned as a dict `{"error": "...", "response": "..."}` rather than raising exceptions.
+
+```python
+from issabel_client import IssabelClient
+from issabel_client.client import AuthenticationError
+
+try:
+    client.authenticate("admin", "wrong")
+except ValueError as e:
+    print(f"Auth error: {e}")
+
+try:
+    result = client.get_extensions()
+    if "error" in result:
+        print(f"API error: {result['error']}")
+except AuthenticationError as e:
+    print(f"Token renewal failed: {e} — please re-authenticate.")
+```

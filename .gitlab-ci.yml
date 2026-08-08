@@ -1,0 +1,115 @@
+stages:
+  - test
+  - lint
+  - publish
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip/
+
+.python-base:
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --upgrade pip
+    - pip install -e .[dev]
+
+# ------------------------------------------------------------------
+# Test stage — run pytest across multiple Python versions
+# ------------------------------------------------------------------
+
+pytest:
+  extends: .python-base
+  stage: test
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12"]
+  script:
+    - pytest tests/ -v --tb=short
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    expire_in: 1 week
+
+# ------------------------------------------------------------------
+# Lint stage — style and formatting checks
+# ------------------------------------------------------------------
+
+flake8:
+  extends: .python-base
+  stage: lint
+  variables:
+    PYTHON_VERSION: "3.12"
+  script:
+    - flake8 issabel_client/ tests/ --max-line-length=120 --extend-ignore=E203
+
+black:
+  extends: .python-base
+  stage: lint
+  variables:
+    PYTHON_VERSION: "3.12"
+  script:
+    - black --check --diff issabel_client/ tests/
+
+# ------------------------------------------------------------------
+# Publish stage
+#
+# dry-run  → build + twine check on every push (any branch / MR).
+#            Catches packaging errors before they reach a release.
+#
+# pypi     → real upload to PyPI, triggered only when a protected
+#            tag matching v* is pushed (e.g. v0.2.0).
+#            Requires the CI/CD variable PYPI_TOKEN to be set in
+#            GitLab → Settings → CI/CD → Variables (masked + protected).
+# ------------------------------------------------------------------
+
+.publish-base:
+  image: python:3.12-slim
+  stage: publish
+  before_script:
+    - pip install --upgrade pip build twine
+  script:
+    - python -m build
+    - python -m twine check dist/*
+
+publish:dry-run:
+  extends: .publish-base
+  script:
+    - python -m build
+    - python -m twine check dist/*
+  rules:
+    # Run on every push that is NOT a protected tag — gives early
+    # feedback on dist integrity without actually uploading.
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+      when: never
+    - when: on_success
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 3 days
+
+publish:pypi:
+  extends: .publish-base
+  script:
+    - python -m build
+    - python -m twine check dist/*
+    - >
+      TWINE_USERNAME=__token__
+      TWINE_PASSWORD=${PYPI_TOKEN}
+      python -m twine upload --non-interactive dist/*
+  rules:
+    # Upload only on protected version tags (e.g. v0.2.0, v1.0.0).
+    # The tag must be marked as "protected" in GitLab for PYPI_TOKEN
+    # (a protected variable) to be injected into this job.
+    - if: '$CI_COMMIT_TAG =~ /^v/ && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: on_success
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 30 days
+  environment:
+    name: pypi
+    url: https://pypi.org/project/issabel_client/

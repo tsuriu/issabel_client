@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "issabel_client"
-version = "0.1.0"
+version = "0.2.0"
 description = "A simple Python Client for the Issabel PBX API"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "Tulio Amancio", email = "root@tsuriu.com" },
@@ -18,11 +18,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Communications :: Telephony",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]

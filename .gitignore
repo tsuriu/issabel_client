@@ -35,3 +35,6 @@ ENV/
 
 # Project Specific
 framework/
+
+ref/
+issabel_sdk.md
