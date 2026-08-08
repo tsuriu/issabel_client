@@ -38,9 +38,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tsuriu/issabel_client"
-Repository = "https://github.com/tsuriu/issabel_client"
-Issues = "https://github.com/tsuriu/issabel_client/issues"
+Homepage = "https://gitlab.com/libandpackages/issabel-sdk"
+Repository = "https://gitlab.com/libandpackages/issabel-sdk"
+Issues = "https://gitlab.com/libandpackages/issabel-sdk/-/issues"
+Changelog = "https://gitlab.com/libandpackages/issabel-sdk/-/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

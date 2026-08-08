@@ -24,8 +24,8 @@ pip install issabel_client
 Or from source:
 
 ```bash
-git clone https://github.com/tsuriu/issabel_client.git
-cd issabel_client
+git clone https://gitlab.com/libandpackages/issabel-sdk.git
+cd issabel-sdk
 pip install -e .[dev]
 ```
 
@@ -65,6 +65,10 @@ Full usage guide, payload schemas, and the complete resource catalogue are in [d
 Ready-to-run scripts are in the `examples/` directory:
 - [example_usage.py](examples/example_usage.py)
 
+## Contributing
+
+Pull Requests are welcome at [gitlab.com/libandpackages/issabel-sdk](https://gitlab.com/libandpackages/issabel-sdk). Please run `pytest` and `flake8` before submitting.
+
 ## Resource Capabilities
 
 | Category | Resources |
@@ -77,7 +81,3 @@ Ready-to-run scripts are in the `examples/` directory:
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Contributing
-
-Pull Requests are welcome! Please run `pytest` and `flake8` before submitting.
